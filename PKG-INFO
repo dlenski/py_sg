@@ -1,0 +1,10 @@
+Metadata-Version: 1.0
+Name: py_sg
+Version: 0.1
+Summary: Python SCSI generic library
+Home-page: http://tonquil.homeip.net/~dlenski/py_sg
+Author: Dan Lenski
+Author-email: lenski@umd.edu
+License: GPLv3
+Description: UNKNOWN
+Platform: UNKNOWN
