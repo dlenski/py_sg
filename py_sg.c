@@ -39,7 +39,7 @@ obj_to_fd(PyObject *object, int *target)
 
 PyDoc_STRVAR(write__doc__,
 "write(sg_fd, cmd[, buf, timeout])\n\n"
-"Issue a command and write data.");
+"Issue a command and write data.  Returns nothing.");
 
 static PyObject *
 sg_write(PyObject *self, PyObject *args)
@@ -116,7 +116,7 @@ sg_read(PyObject *self, PyObject *args)
     bufLen = PyInt_AsLong(bufObj);
     if (bufLen <= 0) {
       PyErr_SetString(PyExc_TypeError,
-                      "must provide a writable buffer object, or an integer specifying the buffer size");
+                      "must provide a writable buffer object, or an integer (> 0) specifying the buffer size");
       return NULL;
     }
     PyErr_Clear();
