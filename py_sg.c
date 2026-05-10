@@ -1,13 +1,16 @@
 /**
  * Python SCSI generic library
- * version 0.1
  *
  * Copyright (C) 2008 by Daniel Lenski <lenski@umd.edu>
  * Time-stamp: <2008-09-19 00:18:51 dlenski>
  *
+ * Migrated to Python3 by tvladyslav <ykp@protonmail.ch>
+ *
  * Released under the terms of the
- * GNU General Public License version 2 or later
+ * GNU General Public License version 3 or later
  */
+
+#define PY_SSIZE_T_CLEAN
 
 #include <Python.h>
 
@@ -73,7 +76,7 @@ sg_write(PyObject *self, PyObject *args)
   io.timeout = timeout;   /* in millisecs */
   /* io.flags = 0; */     /* take defaults: indirect IO, etc */
   /* io.pack_id = 0; */
-  /* io.usr_ptr = NULL; */  
+  /* io.usr_ptr = NULL; */
 
   r = ioctl(sg_fd, SG_IO, &io);
 
@@ -87,44 +90,102 @@ sg_write(PyObject *self, PyObject *args)
                     Py_BuildValue("BBBs#", io.masked_status, io.host_status, io.driver_status, sense, io.sb_len_wr));
     return NULL;
   }
-  
+
   Py_RETURN_NONE;
 }
 
 //////////////////////////////////////////////////////////////////////
 
-PyDoc_STRVAR(read__doc__,
-"read(sg_fd, cmd, bufObj[, timeout]) -> LENGTH\n"
-"read(sg_fd, cmd, bufLen[, timeout]) -> STRING\n\n"
-"Issue a command and read a response.  Response is either\n"
-"returned as a binary string, or written to a provided\n"
-"writable buffer object.");
+PyDoc_STRVAR(read_into_buf__doc__,
+"sg_read_into_buf(sg_fd, cmd, bufObj[, timeout]) -> LENGTH\n\n"
+"Issue a command and read a response.\n"
+"Response is written to a provided writable buffer object.");
 
 static PyObject *
-sg_read(PyObject *self, PyObject *args)
+sg_read_into_buf(PyObject *self, PyObject *args)
 {
-  int sg_fd, timeout=20000, newbuf=0;
-  uint8_t *cmd, *buf;
-  Py_ssize_t cmdLen, bufLen;
-  PyObject *bufObj;
+  int sg_fd;
+  const int timeout=20000;
+  uint8_t *cmd;
+  int8_t *buf;
+  Py_ssize_t cmdLen;
+  Py_buffer bufObj;
 
   // parse and check arguments
-  
-  if (!PyArg_ParseTuple(args, "O&s#O|i:read", obj_to_fd, &sg_fd, &cmd, &cmdLen, &bufObj, &timeout))
+  if (!PyArg_ParseTuple(args, "O&s#y*|i:read_into_buf", obj_to_fd, &sg_fd, &cmd, &cmdLen, &bufObj, &timeout))
     return NULL;
-  if (PyObject_AsWriteBuffer(bufObj, (void*)&buf, &bufLen) < 0) {
-    bufLen = PyInt_AsLong(bufObj);
-    if (bufLen <= 0) {
-      PyErr_SetString(PyExc_TypeError,
-                      "must provide a writable buffer object, or an integer (> 0) specifying the buffer size");
-      return NULL;
-    }
-    PyErr_Clear();
-    bufObj = PyString_FromStringAndSize(NULL, bufLen); // new blank string
-    if (!bufObj) return NULL;
-    buf = (unsigned char*)PyString_AS_STRING(bufObj);
-    newbuf = 1;
+
+  buf = bufObj.buf;
+  const Py_ssize_t bufLen = bufObj.len;
+
+  // submit SG_IO ioctl
+  sg_io_hdr_t io;
+  uint8_t sense[32];
+  int r;
+
+  memset(&io, 0, sizeof(io));
+
+  io.interface_id = 'S';
+  io.cmd_len = cmdLen;
+  /* io.iovec_count = 0; */  /* memset takes care of this */
+  io.mx_sb_len = sizeof(sense);
+  io.dxfer_direction = SG_DXFER_FROM_DEV;
+  io.dxfer_len = bufLen;
+  io.dxferp = buf;
+  io.cmdp = cmd;
+  io.sbp = sense;
+  io.timeout = timeout;   /* in millisecs */
+  /* io.flags = 0; */     /* take defaults: indirect IO, etc */
+  /* io.pack_id = 0; */
+  /* io.usr_ptr = NULL; */
+
+  r = ioctl(sg_fd, SG_IO, &io);
+
+  PyObject *result = NULL;
+
+  // handle errors
+  if (r < 0) {
+    PyErr_SetFromErrno(PyExc_OSError);
+  } else if ((io.info & SG_INFO_OK_MASK) != SG_INFO_OK) {
+    PyErr_SetObject(SCSIError,
+                    Py_BuildValue("BBBs#", io.masked_status, io.host_status, io.driver_status, sense, io.sb_len_wr));
+  } else {
+    const int len = io.dxfer_len - io.resid;
+    // data is in writable buffer, just return length
+    result = PyLong_FromLong(len);
   }
+
+  PyBuffer_Release(&bufObj);
+  return result;
+}
+
+//////////////////////////////////////////////////////////////////////
+
+PyDoc_STRVAR(read_as_bin_str__doc__,
+"read_as_bin_str(sg_fd, cmd, bufLen[, timeout]) -> STRING\n\n"
+"Issue a command and read a response.\n"
+"Response is returned as a binary string.");
+
+static PyObject *
+sg_read_as_bin_str(PyObject *self, PyObject *args)
+{
+  int sg_fd;
+  const int timeout=20000;
+  uint8_t *cmd;
+  char *buf;
+  Py_ssize_t cmdLen, bufLen;
+
+  // parse and check arguments
+
+  if (!PyArg_ParseTuple(args, "O&s#n|i:read_as_bin_str", obj_to_fd, &sg_fd, &cmd, &cmdLen, &bufLen, &timeout))
+    return NULL;
+
+  if (bufLen <= 0) {
+    PyErr_SetString(PyExc_TypeError, "must provide an integer (> 0) specifying the buffer size");
+    return NULL;
+  }
+
+  buf = (char*)calloc(bufLen, 1);
 
   // submit SG_IO ioctl
 
@@ -146,32 +207,25 @@ sg_read(PyObject *self, PyObject *args)
   io.timeout = timeout;   /* in millisecs */
   /* io.flags = 0; */     /* take defaults: indirect IO, etc */
   /* io.pack_id = 0; */
-  /* io.usr_ptr = NULL; */  
+  /* io.usr_ptr = NULL; */
 
   r = ioctl(sg_fd, SG_IO, &io);
 
+  PyObject* result = NULL;
+
   // handle errors
-  
   if (r < 0) {
-    if (newbuf) { Py_DECREF(bufObj); }
     PyErr_SetFromErrno(PyExc_OSError);
-    return NULL;
   } else if ((io.info & SG_INFO_OK_MASK) != SG_INFO_OK) {
-    if (newbuf) { Py_DECREF(bufObj); }
     PyErr_SetObject(SCSIError,
                     Py_BuildValue("BBBs#", io.masked_status, io.host_status, io.driver_status, sense, io.sb_len_wr));
-    return NULL;
-  }
-
-  int len = io.dxfer_len - io.resid;
-  if (newbuf) {
-    // trim to size of data actually received
-    if (_PyString_Resize(&bufObj, len) < 0) return NULL;
-    return bufObj;
   } else {
-    // data is in writable buffer, just return length
-    return PyInt_FromLong(len);
-  }
+    const int len = io.dxfer_len - io.resid;
+    result = PyBytes_FromStringAndSize(buf, len);
+}
+
+  free(buf);
+  return result;
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -186,20 +240,31 @@ PyDoc_STRVAR(module__doc__,
 
 static PyMethodDef SgMethods[] = {
   {"write", sg_write, METH_VARARGS, write__doc__},
-  {"read",  sg_read,  METH_VARARGS, read__doc__},
+  {"read_into_buf",  sg_read_into_buf,  METH_VARARGS, read_into_buf__doc__},
+  {"read_as_bin_str",  sg_read_as_bin_str,  METH_VARARGS, read_as_bin_str__doc__},
   {NULL, NULL, 0, NULL}
 };
 
+static struct PyModuleDef py_sg_definition = {
+    PyModuleDef_HEAD_INIT,
+    "py_sg",
+    module__doc__,
+    -1,
+    SgMethods
+};
+
 PyMODINIT_FUNC
-initpy_sg(void)
+PyInit_py_sg(void)
 {
   // initialize module
-  PyObject *mod = Py_InitModule3("py_sg", SgMethods, module__doc__);
-  if (!mod) return;
-  
+  Py_Initialize();
+  PyMODINIT_FUNC mod = PyModule_Create(&py_sg_definition);
+  if (!mod) return NULL;
+
   // SCSIError
   PyObject *doc = Py_BuildValue("{ss}", "__doc__", SCSIError__doc__);
   SCSIError = PyErr_NewException( "py_sg.SCSIError", NULL, doc);
 
   PyModule_AddObject(mod, "SCSIError", SCSIError);
+  return mod;
 }
