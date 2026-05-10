@@ -103,7 +103,7 @@ static PyObject *
 sg_read(PyObject *self, PyObject *args)
 {
     int sg_fd;
-    const int timeout=20000;
+    int timeout=20000;
     uint8_t *cmd;
     char *buf;
     Py_ssize_t cmdLen, bufLen;
