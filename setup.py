@@ -3,6 +3,6 @@
 from distutils.core import setup, Extension
 setup(
       ext_modules=[
-        Extension("py_sg", ["py_sg.c"])
+          Extension("py_sg", ["py_sg.c"])
       ],
 )
