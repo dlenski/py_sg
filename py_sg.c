@@ -107,18 +107,16 @@ sg_read(PyObject *self, PyObject *args)
     uint8_t *cmd;
     char *buf;
     Py_ssize_t cmdLen, bufLen;
+    PyObject *bufObj;
 
     // parse and check arguments
 
     if (!PyArg_ParseTuple(args, "O&y#n|i:read", obj_to_fd, &sg_fd, &cmd, &cmdLen, &bufLen, &timeout))
         return NULL;
 
-    if (bufLen <= 0) {
-        PyErr_SetString(PyExc_TypeError, "must provide an integer (> 0) specifying the buffer size");
-        return NULL;
-    }
-
-    buf = (char*)calloc(bufLen, 1);
+    bufObj = PyBytes_FromStringAndSize(NULL, bufLen); // new blank bytes
+    if (!bufObj) return NULL;
+    buf = (unsigned char*)PyBytes_AS_STRING(bufObj);
 
     // submit SG_IO ioctl
 
@@ -144,8 +142,6 @@ sg_read(PyObject *self, PyObject *args)
 
     r = ioctl(sg_fd, SG_IO, &io);
 
-    PyObject* result = NULL;
-
     // handle errors
     if (r < 0) {
         PyErr_SetFromErrno(PyExc_OSError);
@@ -153,12 +149,13 @@ sg_read(PyObject *self, PyObject *args)
         PyErr_SetObject(SCSIError,
                         Py_BuildValue("BBBy#", io.masked_status, io.host_status, io.driver_status, sense, io.sb_len_wr));
     } else {
+        // trim to size of data actually received
         const int len = io.dxfer_len - io.resid;
-        result = PyBytes_FromStringAndSize(buf, len);
-}
+        if (_PyBytes_Resize(&bufObj, len) < 0) return NULL;
+        return bufObj;
+    }
 
-    free(buf);
-    return result;
+    return NULL;
 }
 
 //////////////////////////////////////////////////////////////////////
