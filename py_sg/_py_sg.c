@@ -184,14 +184,14 @@ static PyMethodDef SgMethods[] = {
 
 static struct PyModuleDef py_sg_definition = {
         PyModuleDef_HEAD_INIT,
-        "py_sg",
+        "_py_sg",
         module__doc__,
         -1,
         SgMethods
 };
 
 PyMODINIT_FUNC
-PyInit_py_sg(void)
+PyInit__py_sg(void)
 {
     // initialize module
     Py_Initialize();
