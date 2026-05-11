@@ -21,9 +21,10 @@
 static PyObject *SCSIError;
 PyDoc_STRVAR(SCSIError__doc__,
 "SCSI operation failed.\n\n"
-"The accompanying value is a 4-tuple containing the masked_status,\n"
-"driver_status, host_status, and sense buffer fields:\n\n"
-"SCSIError(masked_status, driver_status, host_status, sense)");
+"The args are a 5-tuple containing the masked_status,\n"
+"host_status, driver_status, sense buffer, and data buffer fields\n"
+"from the failed operation:\n\n"
+"SCSIError(masked_status, host_status, driver_status, sense, buf)");
 
 static int
 obj_to_fd(PyObject *object, int *target)
@@ -87,7 +88,8 @@ sg_write(PyObject *self, PyObject *args, PyObject *kwargs)
         return NULL;
     } else if ((io.info & SG_INFO_OK_MASK) != SG_INFO_OK) {
         PyErr_SetObject(SCSIError,
-                        Py_BuildValue("BBBy#", io.masked_status, io.host_status, io.driver_status, sense, io.sb_len_wr));
+                        Py_BuildValue("BBBy#y#", io.masked_status, io.host_status, io.driver_status,
+                            (io.sb_len_wr > 0 ? sense : NULL), io.sb_len_wr, buf, bufLen));
         return NULL;
     }
 
@@ -148,14 +150,17 @@ sg_read(PyObject *self, PyObject *args, PyObject *kwargs)
     // handle errors
     if (r < 0) {
         PyErr_SetFromErrno(PyExc_OSError);
-    } else if ((io.info & SG_INFO_OK_MASK) != SG_INFO_OK) {
-        PyErr_SetObject(SCSIError,
-                        Py_BuildValue("BBBy#", io.masked_status, io.host_status, io.driver_status, sense, io.sb_len_wr));
     } else {
         // trim to size of data actually received
-        const int len = io.dxfer_len - io.resid;
+        const Py_ssize_t len = io.dxfer_len - io.resid;
         if (_PyBytes_Resize(&bufObj, len) < 0) return NULL;
-        return bufObj;
+
+        if ((io.info & SG_INFO_OK_MASK) != SG_INFO_OK)
+            PyErr_SetObject(SCSIError,
+                            Py_BuildValue("BBBy#O", io.masked_status, io.host_status, io.driver_status,
+                                (io.sb_len_wr > 0 ? sense : NULL), io.sb_len_wr, bufObj));
+        else
+            return bufObj;
     }
 
     return NULL;
