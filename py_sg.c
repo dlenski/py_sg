@@ -39,19 +39,21 @@ obj_to_fd(PyObject *object, int *target)
 //////////////////////////////////////////////////////////////////////
 
 PyDoc_STRVAR(write__doc__,
-"write(sg_fd, cmd[, buf, timeout_ms]) -> None\n\n"
+"write(sg_fd, cmd, buf=None, timeout_ms=20000, flags=0) -> None\n\n"
 "Issue a command and write data.  Returns nothing.");
 
 static PyObject *
-sg_write(PyObject *self, PyObject *args)
+sg_write(PyObject *self, PyObject *args, PyObject *kwargs)
 {
-    int sg_fd, timeout=20000;
+    int sg_fd;
+    unsigned int timeout=20000, flags=0;
     uint8_t *cmd, *buf=NULL;
     Py_ssize_t cmdLen, bufLen=0;
 
     // parse and check arguments
-
-    if (!PyArg_ParseTuple(args, "O&y#|y#i:write", obj_to_fd, &sg_fd, &cmd, &cmdLen, &buf, &bufLen, &timeout))
+    static char *kwlist[] = {"fd", "cmd", "buf", "timeout_ms", "flags", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O&y#|y#II:write", kwlist,
+                                     obj_to_fd, &sg_fd, &cmd, &cmdLen, &buf, &bufLen, &timeout, &flags))
         return NULL;
 
     // submit SG_IO ioctl
@@ -72,7 +74,7 @@ sg_write(PyObject *self, PyObject *args)
     io.cmdp = cmd;
     io.sbp = sense;
     io.timeout = timeout;   /* in millisecs */
-    /* io.flags = 0; */     /* take defaults: indirect IO, etc */
+    io.flags = flags;
     /* io.pack_id = 0; */
     /* io.usr_ptr = NULL; */
 
@@ -95,23 +97,24 @@ sg_write(PyObject *self, PyObject *args)
 //////////////////////////////////////////////////////////////////////
 
 PyDoc_STRVAR(read__doc__,
-"read(sg_fd, cmd, bufLen[, timeout]) -> bytes\n\n"
+"read(sg_fd, cmd, bufLen, timeout_ms=20000, flags=0) -> bytes\n\n"
 "Issue a command and read a response.\n"
 "Response is returned as bytes.");
 
 static PyObject *
-sg_read(PyObject *self, PyObject *args)
+sg_read(PyObject *self, PyObject *args, PyObject *kwargs)
 {
     int sg_fd;
-    int timeout=20000;
-    uint8_t *cmd;
-    char *buf;
+    unsigned int timeout=20000, flags=0;
+    uint8_t *cmd, *buf;
     Py_ssize_t cmdLen, bufLen;
     PyObject *bufObj;
 
     // parse and check arguments
 
-    if (!PyArg_ParseTuple(args, "O&y#n|i:read", obj_to_fd, &sg_fd, &cmd, &cmdLen, &bufLen, &timeout))
+    static char *kwlist[] = {"fd", "cmd", "bufLen", "timeout_ms", "flags", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O&y#n|II:read", kwlist,
+                                     obj_to_fd, &sg_fd, &cmd, &cmdLen, &bufLen, &timeout, &flags))
         return NULL;
 
     bufObj = PyBytes_FromStringAndSize(NULL, bufLen); // new blank bytes
@@ -136,7 +139,7 @@ sg_read(PyObject *self, PyObject *args)
     io.cmdp = cmd;
     io.sbp = sense;
     io.timeout = timeout;   /* in millisecs */
-    /* io.flags = 0; */     /* take defaults: indirect IO, etc */
+    io.flags = flags;
     /* io.pack_id = 0; */
     /* io.usr_ptr = NULL; */
 
@@ -169,8 +172,8 @@ PyDoc_STRVAR(module__doc__,
 "descriptor passed to the methods of this module.");
 
 static PyMethodDef SgMethods[] = {
-    {"write", sg_write, METH_VARARGS, write__doc__},
-    {"read",  sg_read,  METH_VARARGS, read__doc__},
+    {"write", (PyCFunction)sg_write, METH_VARARGS | METH_KEYWORDS, write__doc__},
+    {"read",  (PyCFunction)sg_read,  METH_VARARGS | METH_KEYWORDS, read__doc__},
     {NULL, NULL, 0, NULL}
 };
 
