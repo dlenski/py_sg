@@ -99,29 +99,36 @@ sg_write(PyObject *self, PyObject *args, PyObject *kwargs)
 //////////////////////////////////////////////////////////////////////
 
 PyDoc_STRVAR(read__doc__,
-"read(sg_fd, cmd, bufLen, timeout_ms=20000, flags=0) -> bytes\n\n"
+"read(sg_fd, cmd, bufLen, timeout_ms=20000, flags=0, force_size=False) -> bytes\n\n"
 "Issue a command and read a response.\n"
-"Response is returned as bytes.");
+"Response is returned as bytes.\n"
+"If force_size is set, the response buffer returned is always of the exact\n"
+"size requested; this may work around bugs in the 'resid' field\n"
+"(see https://tldp.org/HOWTO/SCSI-Generic-HOWTO/x356.html)");
 
 static PyObject *
 sg_read(PyObject *self, PyObject *args, PyObject *kwargs)
 {
     int sg_fd;
     unsigned int timeout=20000, flags=0;
+    int force_size=0;
     uint8_t *cmd, *buf;
     Py_ssize_t cmdLen, bufLen;
     PyObject *bufObj;
 
     // parse and check arguments
 
-    static char *kwlist[] = {"fd", "cmd", "bufLen", "timeout_ms", "flags", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O&y#n|II:read", kwlist,
-                                     obj_to_fd, &sg_fd, &cmd, &cmdLen, &bufLen, &timeout, &flags))
+    static char *kwlist[] = {"fd", "cmd", "bufLen", "timeout_ms", "flags", "force_size", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O&y#n|IIp:read", kwlist,
+                                     obj_to_fd, &sg_fd, &cmd, &cmdLen, &bufLen, &timeout, &flags,
+                                     &force_size))
         return NULL;
 
-    bufObj = PyBytes_FromStringAndSize(NULL, bufLen); // new blank bytes
+    bufObj = PyBytes_FromStringAndSize(NULL, bufLen); // new uninitialized bytes
     if (!bufObj) return NULL;
     buf = (unsigned char*)PyBytes_AS_STRING(bufObj);
+    if (force_size)
+        memset(buf, 0, bufLen);
 
     // submit SG_IO ioctl
 
@@ -151,9 +158,11 @@ sg_read(PyObject *self, PyObject *args, PyObject *kwargs)
     if (r < 0) {
         PyErr_SetFromErrno(PyExc_OSError);
     } else {
-        // trim to size of data actually received
-        const Py_ssize_t len = io.dxfer_len - io.resid;
-        if (_PyBytes_Resize(&bufObj, len) < 0) return NULL;
+        if (!force_size) {
+            // trim to size of data actually received
+            const Py_ssize_t len = io.dxfer_len - io.resid;
+            if (_PyBytes_Resize(&bufObj, len) < 0) return NULL;
+        }
 
         if ((io.info & SG_INFO_OK_MASK) != SG_INFO_OK)
             PyErr_SetObject(SCSIError,

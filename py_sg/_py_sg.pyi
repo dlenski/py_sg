@@ -26,7 +26,11 @@ def read(
     bufLen: int,
     timeout_ms: int = 20_000,
     flags: int = 0,
+    force_size: bool = False,
 ) -> bytes:
     """Issue a command and read a response.
-    Response is returned as bytes."""
+    Response is returned as bytes.
+    If force_size is set, the response buffer returned is always of the exact
+    size requested; this may work around bugs in the 'resid' field
+    (see https://tldp.org/HOWTO/SCSI-Generic-HOWTO/x356.html)"""
     ...
