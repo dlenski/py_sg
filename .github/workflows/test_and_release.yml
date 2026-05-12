@@ -9,9 +9,6 @@ jobs:
   build-and-test:
 
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13', '3.14']
 
     steps:
     - uses: actions/checkout@v6
@@ -27,14 +24,14 @@ jobs:
     #    uv run flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
     #    # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
     #    uv run flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-    - name: Build
-      run: uv build
     #- name: Test
     #  run: uv run pytest
+    - name: Build sdist
+      run: uv build --sdist
     - name: Upload Build Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: dist-${{ matrix.python-version }}
+        name: sdist
         path: dist/
 
   release:
@@ -48,11 +45,14 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
 
     steps:
+    - uses: actions/checkout@v6
     - name: Install uv
       uses: astral-sh/setup-uv@v7
+    - name: Build wheels
+      run: uv run cibuildwheel --output-dir wheelhouse
     - uses: actions/download-artifact@v8
       with:
-        name: dist-3.14   # FIXME: how to just use latest?
+        name: sdist
         path: dist/
     - name: Publish to PyPI
-      run: uv publish
+      run: uv publish dist/* wheelhouse/*.whl

@@ -1,6 +1,6 @@
 [project]
 name = "py_sg"
-version = "0.16"
+version = "0.17"
 authors = [
     { name="Dan Lenski", email="dlenski@gmail.com" },
 ]
@@ -27,3 +27,8 @@ classifiers = [
 [build-system]
 build-backend = "setuptools.build_meta"
 requires = ["setuptools >= 40.9.0"]
+
+[dependency-groups]
+dev = [
+    "cibuildwheel>=2.13.1",
+]

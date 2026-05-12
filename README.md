@@ -3,9 +3,11 @@
 ## Description
 
 This is a small Python extension which sends arbitrary commands to SCSI devices,
-via the Linux SCSI Generic driver, which provides the SG_IO ioctl for this purpose.
+via the Linux SCSI Generic driver, which provides
+[the `SG_IO` `ioctl`](https://tldp.org/HOWTO/SCSI-Generic-HOWTO/sg_io.html)
+for this purpose.
 
-Basically, the module includes two methods, read and write, which
+Basically, the module includes two methods, `read` and `write`, which
 allow you to issue commands to SCSI devices and read and write
 accompanying data. If an OS error occurs, the `OSError` exception will
 be raised, while if a SCSI error occurs, the `py_sg.SCSIError` exception
